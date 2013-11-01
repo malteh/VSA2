@@ -1,0 +1,136 @@
+status: , SEARCHING, or FOUND
+loop() ->
+	receive
+		Wakeup -- starts the protocol at a sleeping node
+		Initiate(core,level) -- broadcast new core/level and start MWOE search in a fragment 
+		Test(core,level) -- sent on edge E to see if E leads to another fragment
+		Accept -- response to a Test message indicating a different fragment
+		Reject -- response to a Test message indicating the same fragment
+		Report(cost) -- sent up the tree to inform parent of MWOE of subtree
+		ChangeRoot -- sent from core toward MWOE of fragment, tells the node with the MWOE to connect across it
+		Connect(core,level) -- sent over MWOE to combine fragments
+		Inform(core,level) -- broadcast new core/level to an absorbed fragment
+		AllDone -- broadcast from core to inform nodes of termination
+	end
+.%
+
+Wakeup() ->
+//Note: If the node is not sleeping, M is ignored.
+	if SLEEPING 
+	   // MWOE is the lowest cost basic edge
+	   Edge E = the first edge in basicEdges;
+	   send "Connect(core,level)" over E;
+.%
+
+Initiate(Core,Level) -> //over E
+	status = SEARCHING;
+	New_Core = Core;
+	New_Level = Level;
+	processDeferredTests();  // when Level increases
+	parent = M.sender;
+	mwoe = INFINITY;
+	minChild = null;
+	let waitingForReport contain all branch edges (besides E, if sender != self)
+	send "Initiate(Core,Level)" over all branch edges (besides E, if sender != self)
+	while (there are basicEdges and 
+			 mwoe > cost(first basicEdge)) {
+		 send "Test(Core,Level)" over first basicEdge
+		 wait for a response (Accept or Reject)
+	}
+	
+	//When Initiate loop is completed and waitingForReport is empty
+	if (parent != self) {
+	   status = FOUND;
+	   send "Report(mwoe)" to parent;
+	} else if (mwoe < INFINITY) {
+	   send "ChangeRoot" to self;
+	} else {
+	   send "AllDone" on all branchEdges;
+	}
+.%
+
+//Note: This is called whenever the level increases.
+processDeferredTests() ->
+	for each message M in deferredTests {
+	   if (this.core == M.core) {
+		  send "Reject" to M.sender;
+		  remove M from deferredTests;
+	   } else if (this.level >= level) {
+		  send "Accept" to M.sender;
+		  remove M from deferredTests;
+	   }
+	}
+.%
+
+Test(core,level) over E ->
+	 if (this.core == core) // in same fragment
+		 send back "Reject" along E;
+	 else if (this.level >= level) // another fragment
+		 send back "Accept" along E;
+	 else // don't know yet
+		 put the message into deferredTests;
+.%
+
+Accept() over E ->
+	//Note: Sender is in a different fragment.
+	if (cost(E) < mwoe) {
+	   minChild = null;
+	   mwoe = cost(E);
+	}
+.%
+
+Reject() over E ->
+	// Note: Sender is already in the same fragment, so E must be an internal edge (not a tree edge).
+	move E brom basicEdge to rejectedEdges;
+.%
+
+Report(cost) over E ->
+	remove E from waitingForReport;
+	if (cost < mwoe) {
+		 minChild = other endpoint of E;
+		 mwoe = cost;
+	}
+.%
+
+ChangeRoot() over E ->
+	status = FOUND;
+	if (minChild != null) {
+	   send "ChangeRoot" to minChild;
+	} else {
+	   move first basicEdge to branchEdge;
+	   send "Connect(core,level)" across that edge;
+	}
+.%
+
+Connect(core,level) over E ->
+	move E from basicEdges to branchEdges;
+	if (this.level > M.level) { // ABSORB the other
+	   if (status == FOUND)  // already have MWOE
+		  send Inform(core,level) over E;
+	   else { // status is SEARCHING
+		  add E to waitingForReport;
+		  send Initiate(core,level) over E;
+	   }
+	} else {// equal levels, so MERGE with the other
+	   this.core = maximum end point of E (neighbor)
+	   this.level++;
+	   processDeferredTests(); // since level changed
+	   if (this.core == this) // WE'RE THE NEW CORE
+		  send Initiate(this.core,this.level) to self;
+	}
+.%
+
+Inform(core,level) over E ->
+	this.core = core;
+	this.level = level;
+	processDeferredTests();
+	send "Inform(core,level)" over all other branch  edges (besides E)
+.%
+
+AllDone() over E ->
+	send "AllDone" along all tree edges besides E;
+	The algorithm is finished at this point…
+	Use branchEdges as the edges of the tree.
+	Use the core as the root of the tree.
+.%
+
