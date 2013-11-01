@@ -1,16 +1,34 @@
-status: , SEARCHING, or FOUND
+status: SLEEPING, SEARCHING, or FOUND
 loop() ->
 	receive
-		Wakeup -- starts the protocol at a sleeping node
-		Initiate(core,level) -- broadcast new core/level and start MWOE search in a fragment 
-		Test(core,level) -- sent on edge E to see if E leads to another fragment
-		Accept -- response to a Test message indicating a different fragment
-		Reject -- response to a Test message indicating the same fragment
-		Report(cost) -- sent up the tree to inform parent of MWOE of subtree
-		ChangeRoot -- sent from core toward MWOE of fragment, tells the node with the MWOE to connect across it
-		Connect(core,level) -- sent over MWOE to combine fragments
+		wakeup ->
+			Wakeup -- starts the protocol at a sleeping node
+			
+		{initiate,Level,FragName,NodeState,Edge} ->
+			Initiate(core,level) -- broadcast new core/level and start MWOE search in a fragment 
+			
+		{test,Level,FragName,Edge} ->
+			Test(core,level) -- sent on edge E to see if E leads to another fragment
+			
+		{accept,Edge} ->
+			Accept -- response to a Test message indicating a different fragment
+			
+		{reject,Edge} ->
+			Reject -- response to a Test message indicating the same fragment
+			
+		{report,Weight,Edge} ->
+			Report(cost) -- sent up the tree to inform parent of MWOE of subtree
+			
+		{changeroot,Edge} ->
+			ChangeRoot -- sent from core toward MWOE of fragment, tells the node with the MWOE to connect across it
+			
+		{connect,Level,Edge} ->
+			Connect(core,level) -- sent over MWOE to combine fragments
+			
 		Inform(core,level) -- broadcast new core/level to an absorbed fragment
-		AllDone -- broadcast from core to inform nodes of termination
+		
+		alldone ->
+			AllDone -- broadcast from core to inform nodes of termination
 	end
 .%
 
