@@ -1,11 +1,11 @@
 -module(node).
 -export([start_system/0]).
--include_lib("kernel/include/inet.hrl").
+
 % Globale "Variablen"
 -define(Config,  '../config/system.cfg').
 
 start_system() ->
-	start_system(3)
+	start_system(nodecount())
 .%
 
 start_system(0) ->
@@ -19,7 +19,7 @@ start_system(Count) ->
 	%	halt()
 	%end,
 	Name = list_to_atom("n" ++ integer_to_list(Count)),
-	P = spawn(fun() -> start(Name) end),
+	spawn(fun() -> start(Name) end),
 	start_system(Count-1)
 .%
 
@@ -28,7 +28,6 @@ start(Name) ->
 	N = global:whereis_name(n1),
 	log(N),
 	log(global:registered_names()),
-	neighbours(Name),
 	receive
 		A -> log(A)
 	end
@@ -40,19 +39,27 @@ init(Name) ->
 	global:register_name(Name, self()),
 	{ok, Hosts} = file:consult("../config/hosts.cfg"),
 	net_adm:world_list(Hosts),
-	Neighbours = neighbours(Name),
+	Neighbours = neighbours( ),
 	log(Neighbours)
 .%
 
-neighbours(Name) ->
-	{ok, Neighbours} = file:consult("../config/" ++ integer_to_list(nodecount()) ++ "/" ++ atom_to_list(Name) ++ ".cfg"),
+neighbours() ->
+	{ok, Neighbours} = file:consult("../config/" ++ integer_to_list(nodecount()) ++ "/" ++ name_string() ++ ".cfg"),
 	Neighbours
 .%
 
-log(Text) ->
+name() ->
 	{_, Name} = process_info(self(), registered_name),
+	Name
+.%
+
+name_string() ->
+	atom_to_list(name())
+.%
+
+log(Text) ->
 	{ok, Hostname} = inet:gethostname(),
-	io:format("~s: ~w~n", [atom_to_list(Name) ++ "@" ++ Hostname, Text])
+	io:format("~s: ~w~n", [name_string() ++ "@" ++ Hostname, Text])
 .%
 
 nodecount() ->
