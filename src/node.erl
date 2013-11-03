@@ -29,6 +29,16 @@ start(Name) ->
 	loop(Info)
 .%
 
+init(Name) ->
+	register(Name, self()),
+	global:register_name(Name, self()),
+	{ok, Hosts} = file:consult("../config/hosts.cfg"),
+	net_adm:world_list(Hosts),
+	E = get_edges(),
+	[{Weight, _ ,_} | _] = E,
+	#node{name=Name, basic_edges=E, akmg=Weight}
+.%
+
 loop(Info) ->
 	put(info,Info),
 	%log(Info#node.status),
@@ -63,11 +73,12 @@ loop(Info) ->
 	end	
 .%
 
+% (1) & (2)
 wakeup(Info) ->
 	if Info#node.status == sleeping ->
 		[Edge|_] = Info#node.basic_edges,
-		BasicEdges = lists:delete(transform_edge(Edge),Info#node.basic_edges),
-		Branch_Edges = Info#node.branch_edges ++ [transform_edge(Edge)],
+		BasicEdges = lists:delete(node_tools:transform_edge(Edge),Info#node.basic_edges),
+		Branch_Edges = Info#node.branch_edges ++ [node_tools:transform_edge(Edge)],
 
 		sender(Edge) ! {connect, 0, Edge},
 		
@@ -77,31 +88,7 @@ wakeup(Info) ->
 	end
 .%
 
-sender(Edge) ->
-	{_, _, NodeY} = transform_edge(Edge),
-	NodeY
-.%
-
-initiate(Level,FragName,NodeState,Edge) -> 
-	log("Initiate Empfangen")
-.%
-
-test(Level,Fragname,Edge) -> 
-	log("test Empfangen")
-.%
-
-accept(Edge) -> 
-	log("accept Empfangen")
-.%
-
-reject(Edge) -> 
-	log("reject Empfangen")
-.%
-
-changeroot(Edge) -> 
-	log("changeroot Empfangen")
-.%
-
+% (3)
 connect(Level,Edge,Info) -> 
 	log("connect Empfangen"),
 	if Info#node.status == sleeping ->
@@ -120,7 +107,7 @@ connect(Level,Edge,Info) ->
 		end;
 	% then 	place received message on end of queue
 	?Else ->
-		IsBasic = tools:contains(Info#node.basic_edges, transform_edge(Edge)),
+		IsBasic = tools:contains(Info#node.basic_edges, node_tools:transform_edge(Edge)),
 		if (not IsBasic) ->
 			{Weight, _, _} = Edge,
 			sender(Edge) ! {initiate, Level+1, Weight, find, Edge}; ?Else -> true
@@ -129,89 +116,69 @@ connect(Level,Edge,Info) ->
 	end
 .%
 
+% (4)
+initiate(Level,FragName,NodeState,Edge) -> 
+	log("Initiate Empfangen")
+.%
+
+% (5)
+%procedure_test()
+
+% (6)
+test(Level,Fragname,Edge) -> 
+	log("test Empfangen")
+.%
+
+% (7)
+accept(Edge) -> 
+	log("accept Empfangen")
+.%
+
+% (8)
+reject(Edge) -> 
+	log("reject Empfangen")
+.%
+
+% (9)
+%procedure_report()
+
+% (10)
 report(Weight, Edge, Info) ->
 	log("report Empfangen"),
 	Info
 .%
 
-move_to_branch(Info, Edge) ->
-	BasicEdges = lists:delete(transform_edge(Edge),Info#node.basic_edges),
-	Branch_Edges = Info#node.branch_edges ++ [transform_edge(Edge)],
-	Info#node{basic_edges=BasicEdges,branch_edges=Branch_Edges}
-.%
+% (11)
+%procedure_changeroot()
 
-transform_edge(Edge) ->
-	{Weight,NodeX,NodeY} = Edge,
-	Name = name(),
-	if (NodeX == Name) ->
-		Edge;
-	?Else -> 
-		{Weight,NodeY, NodeX}
-	end
+% (12)
+changeroot(Edge) -> 
+	log("changeroot Empfangen")
 .%
 
 alldone() ->
 	log("AllDone")
 .%
 
-init(Name) ->
-	register(Name, self()),
-	global:register_name(Name, self()),
-	{ok, Hosts} = file:consult("../config/hosts.cfg"),
-	net_adm:world_list(Hosts),
-	E = get_edges(),
-	[{Weight, _ ,_} | _] = E,
-	#node{name=Name, basic_edges=E, akmg=Weight}
+sender(Edge) ->
+	{_, _, NodeY} = node_tools:transform_edge(Edge),
+	NodeY
 .%
 
-convert_to_edge(Neighbour) ->
-	{Gewicht,Name} = Neighbour,
-	{Gewicht,name(),Name}
-.%
-convert_to_edges(Neighbours) ->
-	convert_to_edges(Neighbours,[])
-.%
-convert_to_edges([], ErgebnisListe) ->
-	ErgebnisListe;
-convert_to_edges(Neighbours, ErgebnisListe) ->
-	[Head | Tail] = Neighbours,
-	convert_to_edges(Tail,ErgebnisListe ++ [convert_to_edge(Head)])
-.%
-
-get_edge([],_) ->
-	undefined;
-get_edge(Liste, Name) ->
-	[ H | T ] = Liste,
-	{Weight, NodeX, NodeY} = H,
-	if NodeY == Name ->
-		{ok, H};
-	?Else ->
-		get_edge(T,Name)
-	end
+move_to_branch(Info, Edge) ->
+	BasicEdges = lists:delete(node_tools:transform_edge(Edge),Info#node.basic_edges),
+	Branch_Edges = Info#node.branch_edges ++ [node_tools:transform_edge(Edge)],
+	Info#node{basic_edges=BasicEdges,branch_edges=Branch_Edges}
 .%
 
 get_edges() ->
-	{ok, Neighbours} = file:consult("../config/" ++ integer_to_list(nodecount()) ++ "/" ++ name_string() ++ ".cfg"),
-	sort_edges(convert_to_edges(Neighbours))
-.%
-
-sort_edges(List) ->
-	F = fun(X, Y) -> {XV, _, _} = X, {YV, _, _} = Y, {XV} < {YV} end,
-	lists:sort(F, List)
-.%
-
-name() ->
-	{_, Name} = process_info(self(), registered_name),
-	Name
-.%
-
-name_string() ->
-	atom_to_list(name())
+	{ok, Neighbours} = file:consult("../config/" ++ integer_to_list(nodecount()) ++ "/" ++ node_tools:name_string() ++ ".cfg"),
+	node_tools:sort_edges(node_tools:convert_to_edges(Neighbours))
 .%
 
 log(Text) ->
 	{ok, Hostname} = inet:gethostname(),
-	io:format("~s: ~s~n", [name_string() ++ "@" ++ Hostname, werkzeug:to_String(Text)])
+	io:format("~s: ~s~n", [node_tools:name_string() ++ "@" ++ Hostname, werkzeug:to_String(Text)])
 .%
 
 nodecount() ->
