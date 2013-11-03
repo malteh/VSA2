@@ -31,7 +31,7 @@ start(Name) ->
 
 loop(Info) ->
 	put(info,Info),
-	log(Info#node.status),
+	%log(Info#node.status),
 	receive
 		wakeup ->
 			Info_Neu = wakeup(Info),
@@ -109,9 +109,8 @@ connect(Level,Edge,Info) ->
 	?Else ->
 		Info_Neu = Info
 	end,
-	IsBasic = tools:contains(Info#node.basic_edges, transform_edge(Edge)),
-	V = Level < Info#node.level,
-	if (V) ->
+	
+	if (Level < Info#node.level) ->
 		Info_Neu2 = move_to_branch(Info_Neu, Edge),
 		sender(Edge) ! {initiate, Level,Info_Neu2#node.frag_name, Info_Neu2#node.status, Edge},
 		if Info_Neu2#node.status == find ->
@@ -120,9 +119,12 @@ connect(Level,Edge,Info) ->
 			Info_Neu2
 		end;
 	% then 	place received message on end of queue
-	(not IsBasic) ->
-		{Weight, _, _} = Edge,
-		sender(Edge) ! {initiate, Level+1, Weight, find, Edge},
+	?Else ->
+		IsBasic = tools:contains(Info#node.basic_edges, transform_edge(Edge)),
+		if (not IsBasic) ->
+			{Weight, _, _} = Edge,
+			sender(Edge) ! {initiate, Level+1, Weight, find, Edge}; ?Else -> true
+		end,
 		Info_Neu
 	end
 .%
