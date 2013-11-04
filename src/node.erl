@@ -135,7 +135,7 @@ send_initiate([], _,_,_,_, Find_count) ->
 	Find_count;
 send_initiate(Branch_liste, Level, FragName, NodeState, Edge_j, Find_count) ->
 	[Edge_i|T] = Branch_liste,
-	if H /= Edge_j ->
+	if Edge_i /= Edge_j ->
 		sender(Edge_i) ! {initiate,Level,FragName,NodeState,Edge_i},
 		if NodeState == find ->
 			Find_count_new = Find_count + 1;
@@ -177,7 +177,7 @@ reject(Edge) ->
 
 % (9)
 procedure_report(Info) ->
-	if Info#node.find_count == 0 and Info#node.test_edge == nil ->
+	if (Info#node.find_count == 0) and (Info#node.test_edge == nil) ->
 		sender(Info#node.in_branch) ! {report, weight(Info#node.akmg), Info#node.in_branch},
 		Info#node{status=found};
 	?Else ->
