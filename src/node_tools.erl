@@ -20,7 +20,7 @@ get_edge([],_) ->
 	undefined;
 get_edge(Liste, Name) ->
 	[ H | T ] = Liste,
-	{_, _, NodeY} = H,
+	{_, _, NodeY} = transform_edge(H),
 	if NodeY == Name ->
 		{ok, H};
 	?Else ->
