@@ -5,9 +5,10 @@
 -define(Config,  '../config/system.cfg').
 -define(Else, true).
 
--record( node, { name, status=sleeping, level=0, find_count=0, basic_edges=[], branch_edges=[], rejected_edges=[], in_branch=nil, test_edge=nil, frag_name=0, akmg=nil, best_weight=infinity }).
+-record( node, { name, state=sleeping, level=0, find_count=0, basic_edges=[], branch_edges=[], rejected_edges=[], in_branch=nil, test_edge=nil, frag_name=0, best_edge=nil, best_weight=infinity }).
 
 start_system() ->
+	pman:start(),
 	start_system(nodecount())
 .%
 
@@ -41,42 +42,44 @@ init(Name) ->
 loop(Info) ->
 	receive
 		wakeup ->
-			Info_neu = wakeup(Info),
-			loop(Info_neu);
+			Info_new = wakeup(Info),
+			loop(Info_new);
 	    {initiate,Level,FragName,NodeState,Edge} ->
-			Info_neu = initiate(Level,FragName,NodeState,Edge, Info),
-			loop(Info_neu);
+			Info_new = initiate(Level,FragName,NodeState,Edge, Info),
+			loop(Info_new);
 		{test,Level,Fragname,Edge} ->
-			Info_neu = test(Level,Fragname,Edge, Info),
-			loop(Info_neu);			
+			Info_new = test(Level,Fragname,Edge, Info),
+			loop(Info_new);			
 		{accept,Edge} ->
-			Info_neu = accept(Edge, Info),
-			loop(Info_neu);			
+			Info_new = accept(Edge, Info),
+			loop(Info_new);			
 		{reject,Edge} ->
-			Info_neu = reject(Edge, Info),
-			loop(Info_neu);
+			Info_new = reject(Edge, Info),
+			loop(Info_new);
 		{report,Weight,Edge} ->
-			Info_neu = report(Weight, Edge, Info),
-			loop(Info_neu);
+			Info_new = report(Weight, Edge, Info),
+			loop(Info_new);
 		{changeroot,Edge} ->
-			Info_neu = changeroot(Edge, Info),
-			loop(Info_neu);			
+			Info_new = changeroot(Edge, Info),
+			loop(Info_new);			
 		{connect,Level,Edge} ->
-			Info_neu = connect(Level, Edge, Info),
-			loop(Info_neu);			
+			Info_new = connect(Level, Edge, Info),
+			loop(Info_new);			
 		alldone ->
 			alldone();
-		A ->log(A)
+		A ->
+			log("### Help, I was killed by message " ++ s(A) ++ " ###")
 	end	
 .%
 
 % (1) & (2)
 wakeup(Info) ->
-	if Info#node.status == sleeping ->
+	if Info#node.state == sleeping ->
 		[Edge|_] = Info#node.basic_edges,
+		Info_new = move_to_branch(Info, Edge),
+		Info_new2 = Info_new#node{level=0, state=found, find_count=0},
 		send_over_edge(Edge, {connect, 0, Edge}),
-		Info_neu = move_to_branch(Info, Edge),
-		Info_neu#node{status=found};
+		Info_new2;
 	?Else ->
 		Info
 	end
@@ -85,69 +88,65 @@ wakeup(Info) ->
 % (3)
 connect(Level,Edge,Info) ->
 	log("connect Empfangen" ++ from(Edge)),
-	Info_neu = if Info#node.status == sleeping ->
+	Info_new = if Info#node.state == sleeping ->
 		wakeup(Info);
 	?Else ->
 		Info
 	end,
-	log("L: " ++ werkzeug:to_String(Level) ++ " LN: " ++ werkzeug:to_String(Info_neu#node.level)),
-	if (Level < Info_neu#node.level) ->
-		Info_neu2 = move_to_branch(Info_neu, Edge),
-		send_over_edge(Edge, {initiate, Info_neu2#node.level,Info_neu2#node.frag_name, Info_neu2#node.status, Edge}),
-		if Info_neu2#node.status == find ->
-			Info_neu2#node{find_count=Info_neu2#node.find_count+1};
+	
+	if (Level < Info_new#node.level) ->
+		Info_new2 = move_to_branch(Info_new, Edge),
+		send_over_edge(Edge, {initiate, Info_new2#node.level,Info_new2#node.frag_name, Info_new2#node.state, Edge}),
+		if Info_new2#node.state == find ->
+			Info_new2#node{find_count=Info_new2#node.find_count+1};
 		?Else ->
-			Info_neu2
+			Info_new2
 		end;
-	% then 	place received message on end of queue
 	?Else ->
-		IsBasic = node_tools:equals(node_tools:get_edge(Info_neu#node.basic_edges, Edge) , Edge),
+		IsBasic = node_tools:equals(node_tools:get_edge(Info_new#node.basic_edges, Edge) , Edge),
 		if (IsBasic) ->
 			requeue({connect,Level,Edge});
 		?Else ->
 			{Weight, _, _} = Edge,
-			send_over_edge(Edge, {initiate, Info_neu#node.level+1, Weight, find, Edge})
+			send_over_edge(Edge, {initiate, Info_new#node.level+1, Weight, find, Edge})
 		end,
-		Info_neu
+		Info_new
 	end
 .%
 
 % (4)
 initiate(Level, FragName, NodeState, Edge, Info) ->
 	log("Initiate Empfangen" ++ from(Edge)),
-	Info_neu = Info#node{level=Level, frag_name=FragName, in_branch=Edge, akmg=nil, best_weight=infinity},
+	Info_new = Info#node{level=Level, frag_name=FragName, state=NodeState, in_branch=Edge, best_edge=nil, best_weight=infinity},
 	log("Level gesetzt " ++ s(Level)),
-	Find_count = send_initiate(Info_neu#node.branch_edges, Level, FragName, NodeState, Edge, Info_neu#node.find_count),
-	Info_neu2 = Info_neu#node{find_count=Find_count},
+	Find_count = send_initiate(Info_new#node.branch_edges, Level, FragName, NodeState, Edge, Info_new#node.find_count),
+	Info_new2 = Info_new#node{find_count=Find_count},
 	if NodeState == find ->
-		procedure_test(Info_neu2);
+		procedure_test(Info_new2);
 	?Else ->
-		Info_neu2
+		Info_new2
 	end		
 .%
 
 send_initiate([], _,_,_,_, Find_count) ->
 	Find_count;
-send_initiate(Branch_liste, Level, FragName, NodeState, Edge_j, Find_count) ->
-	[Edge_i|T] = Branch_liste,
-	Equals = node_tools:equals(Edge_i,Edge_j),
-	R = if not Equals ->
-		send_over_edge(Edge_i, {initiate,Level,FragName,NodeState,Edge_i}),
-		if NodeState == find ->
-			Find_count + 1;
-		?Else ->
-			Find_count
-		end;
+send_initiate([Edge_j|T], Level, FragName, NodeState, Edge_j, Find_count) ->
+	send_initiate(T, Level, FragName, NodeState, Edge_j, Find_count);
+send_initiate([Edge_i|T], Level, FragName, NodeState, Edge_j, Find_count) ->
+	send_over_edge(Edge_i, {initiate,Level,FragName,NodeState,Edge_i}),
+	Find_count_new = if NodeState == find ->
+		Find_count + 1;
 	?Else ->
 		Find_count
 	end,
-	send_initiate(T, Level, FragName, NodeState, Edge_j, R)
+	send_initiate(T, Level, FragName, NodeState, Edge_j, Find_count_new)
 .%
 
 % (5)
 procedure_test(Info) ->
 	if Info#node.basic_edges /= [] ->
 		[Test_edge | _] = Info#node.basic_edges,
+		log("Test_edge: " ++ s(Test_edge)),
 		send_over_edge(Test_edge , {test, Info#node.level, Info#node.frag_name, Test_edge}),
 		Info#node{test_edge=Test_edge};
 	?Else ->
@@ -158,7 +157,7 @@ procedure_test(Info) ->
 % (6)
 test(Level,Fragname,Edge, Info) ->
 	log("test Empfangen" ++ from(Edge)),
-	Info_new = if Info#node.status == sleeping ->
+	Info_new = if Info#node.state == sleeping ->
 		wakeup(Info);
 	?Else ->
 		Info
@@ -195,7 +194,7 @@ accept(Edge, Info) ->
 	Weight = weight(Edge),
 	Best_weight = Info_new#node.best_weight,
 	Info_new2 = if Weight < Best_weight ->
-		Info_new#node{akmg=Edge, best_weight=Weight};
+		Info_new#node{best_edge=Edge, best_weight=Weight};
 	?Else ->
 		Info_new
 	end,
@@ -218,7 +217,7 @@ reject(Edge, Info) ->
 procedure_report(Info) ->
 	if (Info#node.find_count == 0) and (Info#node.test_edge == nil) ->
 		send_over_edge(Info#node.in_branch, {report, Info#node.best_weight, Info#node.in_branch}),
-		Info#node{status=found};
+		Info#node{state=found};
 	?Else ->
 		Info
 	end
@@ -231,13 +230,13 @@ report(Weight, Edge, Info) ->
 	if not Equals ->
 		Info_new = Info#node{find_count=Info#node.find_count-1},
 		Info_new2 = if Weight < Info_new#node.best_weight ->
-			Info_new#node{akmg=Edge, best_weight=Weight};
+			Info_new#node{best_edge=Edge, best_weight=Weight};
 		?Else ->
 			Info_new
 		end,
 		procedure_report(Info_new2);
 	?Else ->
-		if Info#node.status == find ->
+		if Info#node.state == find ->
 			requeue({report,Weight,Edge}),
 			Info;
 		?Else ->
@@ -245,7 +244,7 @@ report(Weight, Edge, Info) ->
 				procedure_changeroot(Info);
 			?Else ->
 				if (Weight == Info#node.best_weight) and (Weight == infinity) ->
-					log("#####################################"),
+					log("### " ++ s(Info) ++ " ###"),
 					timer:sleep(2000),
 					exit(normal);
 				?Else ->
@@ -258,7 +257,7 @@ report(Weight, Edge, Info) ->
 
 % (11)
 procedure_changeroot(Info) ->
-	Best_edge = Info#node.akmg,
+	Best_edge = Info#node.best_edge,
 	Is_branch = node_tools:equals(node_tools:get_edge(Info#node.branch_edges, Best_edge), Best_edge),
 	if Is_branch ->
 		send_over_edge(Best_edge, {changeroot, Best_edge}),
@@ -288,15 +287,16 @@ s(V) ->
 .%
 
 requeue(Message) ->
-	timer:sleep(500),
+	timer:sleep(5000),
 	self() ! Message,
-	log(s(Message) ++ " wurde zurückgestellt")
+	log(s(Message) ++ " wurde zurueckgestellt")
 .%
 
 send_over_edge(Edge, Message) ->
 	S = sender(Edge),
 	S ! Message,
-	log(s(Message) ++ " an " ++ s(S) ++ " gesendet")
+	log(s(Message) ++ " an " ++ s(S) ++ " gesendet"),
+	timer:sleep(1000)
 .%
 
 sender(Edge) ->
@@ -334,7 +334,7 @@ get_edges() ->
 log(Text) ->
 	{ok, Hostname} = inet:gethostname(),
 	Var = io_lib:format("~s: ~s~n", [node_tools:name_string() ++ "@" ++ Hostname, s(Text)]),
-	werkzeug:logging("../log.txt",Var)
+	werkzeug:logging("../logs/nodes.log",Var)
 .%
 
 nodecount() ->
