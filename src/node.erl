@@ -5,7 +5,7 @@
 -define(Config,  '../config/system.cfg').
 -define(Else, true).
 
--record( node, { name, status=sleeping, level=0, find_count=0, basic_edges=[], in_branch=nil, branch_edges=[], rejected_edges=[], test_edge, frag_name=0, akmg, best_weight }).
+-record( node, { name, status=sleeping, level=0, find_count=0, basic_edges=[], branch_edges=[], rejected_edges=[], in_branch=nil, test_edge, frag_name=0, akmg, best_weight }).
 
 start_system() ->
 	start_system(nodecount())
@@ -35,13 +35,13 @@ init(Name) ->
 	{ok, Hosts} = file:consult("../config/hosts.cfg"),
 	net_adm:world_list(Hosts),
 	E = get_edges(),
-	[{Weight, _ ,_} | _] = E,
-	#node{name=Name, basic_edges=E, akmg=Weight}
+	log(werkzeug:to_String(E)),
+	#node{name=Name, basic_edges=E}
 .%
 
 loop(Info) ->
 	put(info,Info),
-	%log(Info#node.status),
+	log(Info),
 	receive
 		wakeup ->
 			Info_neu = wakeup(Info),
@@ -77,12 +77,9 @@ loop(Info) ->
 wakeup(Info) ->
 	if Info#node.status == sleeping ->
 		[Edge|_] = Info#node.basic_edges,
-		BasicEdges = lists:delete(node_tools:transform_edge(Edge),Info#node.basic_edges),
-		Branch_Edges = Info#node.branch_edges ++ [node_tools:transform_edge(Edge)],
-
 		sender(Edge) ! {connect, 0, Edge},
-		
-		Info#node{status=found, basic_edges=BasicEdges, branch_edges=Branch_Edges};
+		Info_neu = move_to_branch(Info, Edge),
+		Info_neu#node{status=found};
 	?Else ->
 		Info
 	end
@@ -96,10 +93,10 @@ connect(Level,Edge,Info) ->
 	?Else ->
 		Info_neu = Info
 	end,
-	
-	if (Level < Info#node.level) ->
+	log("L: " ++ werkzeug:to_String(Level) ++ " LN: " ++ werkzeug:to_String(Info_neu#node.level)),
+	if (Level < Info_neu#node.level) ->
 		Info_neu2 = move_to_branch(Info_neu, Edge),
-		sender(Edge) ! {initiate, Level,Info_neu2#node.frag_name, Info_neu2#node.status, Edge},
+		sender(Edge) ! {initiate, Info_neu2#node.level,Info_neu2#node.frag_name, Info_neu2#node.status, Edge},
 		if Info_neu2#node.status == find ->
 			Info_neu2#node{find_count=Info_neu2#node.find_count+1};
 		?Else ->
@@ -107,10 +104,12 @@ connect(Level,Edge,Info) ->
 		end;
 	% then 	place received message on end of queue
 	?Else ->
-		IsBasic = tools:contains(Info#node.basic_edges, node_tools:transform_edge(Edge)),
-		if (not IsBasic) ->
+		IsBasic = node_tools:equals(node_tools:get_edge(Info_neu#node.basic_edges, Edge) , Edge),
+		if (IsBasic) ->
+			self() ! {connect,Level,Edge};
+		?Else ->
 			{Weight, _, _} = Edge,
-			sender(Edge) ! {initiate, Level+1, Weight, find, Edge}; ?Else -> true
+			sender(Edge) ! {initiate, Info_neu#node.level+1, Weight, find, Edge}
 		end,
 		Info_neu
 	end
@@ -119,9 +118,10 @@ connect(Level,Edge,Info) ->
 % (4)
 initiate(Level, FragName, NodeState, Edge, Info) -> 
 	log("Initiate Empfangen"),
+	log("Fragname gesetzt " ++ werkzeug:to_String(FragName)),
 	Info_neu = Info#node{level=Level, frag_name=FragName, in_branch = Edge, akmg=nil, best_weight=infinity},
 	Find_count = send_initiate(Info_neu#node.branch_edges, Level, FragName, NodeState, Edge, Info_neu#node.find_count),
-	Info_neu2 = Info#node{find_count=Find_count},
+	Info_neu2 = Info_neu#node{find_count=Find_count},
 	if NodeState == find ->
 		procedure_test(Info_neu2);
 	?Else ->
@@ -133,16 +133,16 @@ send_initiate([], _,_,_,_, Find_count) ->
 	Find_count;
 send_initiate(Branch_liste, Level, FragName, NodeState, Edge_j, Find_count) ->
 	[Edge_i|T] = Branch_liste,
-	if Edge_i /= Edge_j ->
+	Equals = node_tools:equals(Edge_i,Edge_j),
+	R = if not Equals ->
 		sender(Edge_i) ! {initiate,Level,FragName,NodeState,Edge_i},
 		if NodeState == find ->
-			Find_count_new = Find_count + 1;
+			Find_count + 1;
 		?Else -> 
-			Find_count_new = Find_count
-		end,
-		R = Find_count_new;
+			Find_count
+		end;
 	?Else ->
-		R = Find_count
+		Find_count
 	end,
 	send_initiate(T, Level, FragName, NodeState, Edge_j, R)
 .%
@@ -161,30 +161,39 @@ procedure_test(Info) ->
 % (6)
 test(Level,Fragname,Edge, Info) -> 
 	log("test Empfangen"),
-	New_info = if Info#node.status == sleeping ->
+	log("Edge: " ++ werkzeug:to_String(Edge) ++ "Fragname:" ++ werkzeug:to_String(Fragname) ++ " Info Fragname:" ++ werkzeug:to_String(Info#node.frag_name)),
+	Info_new = if Info#node.status == sleeping ->
 		wakeup(Info);
 	?Else ->
 		Info
 	end,
-	if Level > New_info#node.level ->
+	if Level > Info_new#node.level ->
+		timer:sleep(200),
 		self() ! {test, Level, Fragname, Edge},
-		New_info;
+		Info_new;
 	?Else ->
-		if Fragname /= New_info#node.frag_name ->
+		log("F /= FN?"),
+		if Fragname /= Info_new#node.frag_name ->
+			log("Yes"),
 			sender(Edge) ! {accept, Edge},
-			New_info;
+			Info_new;
 		?Else ->
-			Is_basic = (node_tools:get_edge(New_info#node.basic_edges, Edge) == Edge),
-			New_info3 = if Is_basic ->
-				New_info#node{status=rejected};
+			log("No"),
+			Is_basic = node_tools:equals(node_tools:get_edge(Info_new#node.basic_edges, Edge), Edge),
+			log(Edge),
+			log(Info_new#node.basic_edges),
+			log(Is_basic),
+			Info_new3 = if Is_basic ->
+				move_to_rejected(Info_new, Edge);
 			?Else ->
-				New_info
+				Info_new
 			end,
-			if New_info3#node.test_edge /= Edge ->
+			Equal = node_tools:equals(Info_new3#node.test_edge, Edge),
+			if not Equal ->
 				sender(Edge) ! {reject,Edge},
-				New_info3;
+				Info_new3;
 			?Else ->
-				procedure_test(New_info3)
+				procedure_test(Info_new3)
 			end
 		end
 	end
@@ -195,9 +204,9 @@ accept(Edge, Info) ->
 	log("accept Empfangen"),
 	Info_new = Info#node{test_edge=nil},
 	Weight = weight(Edge),
-	Best_weight = weight(Info_new#node.akmg),
+	Best_weight = Info_new#node.best_weight,
 	Info_new2 = if Weight < Best_weight ->
-		Info_new#node{akmg=Edge};
+		Info_new#node{akmg=Edge, best_weight=Weight};
 	?Else ->
 		Info_new
 	end,
@@ -207,19 +216,19 @@ accept(Edge, Info) ->
 % (8)
 reject(Edge, Info) -> 
 	log("reject Empfangen"),
-	Is_basic = (node_tools:get_edge(Info#node.basic_edges, Edge) == Edge),
-	if Is_basic ->
+	Is_basic = node_tools:equals(node_tools:get_edge(Info#node.basic_edges, Edge) , Edge),
+	Info_new = if Is_basic ->
 		move_to_rejected(Info, Edge);
 	?Else ->
 		Info
 	end,
-	procedure_test(Info)
+	procedure_test(Info_new)
 .%
 
 % (9)
 procedure_report(Info) ->
 	if (Info#node.find_count == 0) and (Info#node.test_edge == nil) ->
-		sender(Info#node.in_branch) ! {report, weight(Info#node.akmg), Info#node.in_branch},
+		sender(Info#node.in_branch) ! {report, Info#node.best_weight, Info#node.in_branch},
 		Info#node{status=found};
 	?Else ->
 		Info
@@ -229,23 +238,28 @@ procedure_report(Info) ->
 % (10)
 report(Weight, Edge, Info) ->
 	log("report Empfangen"),
-	if Edge /= Info#node.in_branch ->
+	Equals = node_tools:equals(Edge,Info#node.in_branch),
+	if Equals ->
 		Info_new = Info#node{find_count=Info#node.find_count-1},
-		Best_weight = Info_new#node.best_weight,
-		if Weight < Best_weight ->
-			Info_new2 = Info_new#node{akmg=Edge},
+		if Weight < Info_new#node.best_weight ->
+			Info_new2 = Info_new#node{akmg=Edge, best_weight=Weight},
 			procedure_report(Info_new2);
 		?Else ->
 			Info_new
 		end;
 	?Else ->
 		if Info#node.status == find ->
-			self() ! {report,Weight,Edge};
+			self() ! {report,Weight,Edge},
+			Info;
 		?Else ->
+		log("ICH HALTE JETZT AN ################################"),
 			if Weight > Info#node.best_weight ->
 				procedure_changeroot(Info);
 			?Else ->
+				
 				if (Weight == Info#node.best_weight) and (Weight == infinity) ->
+					
+					timer:sleep(2000),
 					halt();
 				?Else ->
 					Info
@@ -258,7 +272,7 @@ report(Weight, Edge, Info) ->
 % (11)
 procedure_changeroot(Info) ->
 	Best_edge = Info#node.akmg,
-	Is_branch = (node_tools:get_edge(Info#node.branch_edges, Best_edge) == Best_edge),
+	Is_branch = node_tools:equals(node_tools:get_edge(Info#node.branch_edges, Best_edge), Best_edge),
 	if Is_branch ->
 		sender(Best_edge) ! {changeroot, Best_edge},
 		Info;
@@ -294,11 +308,13 @@ move(From, To, Edge) ->
 .%
 
 move_to_branch(Info, Edge) ->
+	log("Move To Branch: "++werkzeug:to_String(Edge)),
 	{From, To} = move(Info#node.basic_edges, Info#node.branch_edges ,Edge),
 	Info#node{basic_edges=From, branch_edges=To}
 .%
 
 move_to_rejected(Info, Edge) ->
+	log("Move To Rejected: "++werkzeug:to_String(Edge)),
 	{From, To} = move(Info#node.basic_edges, Info#node.rejected_edges ,Edge),
 	Info#node{basic_edges=From, rejected_edges=To}
 .%
@@ -310,11 +326,14 @@ get_edges() ->
 
 log(Text) ->
 	{ok, Hostname} = inet:gethostname(),
-	io:format("~s: ~s~n", [node_tools:name_string() ++ "@" ++ Hostname, werkzeug:to_String(Text)])
+	Var = io_lib:format("~s: ~s~n", [node_tools:name_string() ++ "@" ++ Hostname, werkzeug:to_String(Text)]),
+	werkzeug:logging("../log.txt",Var)
 .%
 
 nodecount() ->
 	{ok, Nodecount} = werkzeug:get_config_value(nodecount, tools:read_config(?Config)),
 	Nodecount
 .%
+
+
 

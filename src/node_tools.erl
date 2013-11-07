@@ -16,17 +16,26 @@ name_string() ->
 	atom_to_list(name())
 .%
 
-get_edge([],_) ->
+get_edge([], _) ->
 	undefined;
-get_edge(Liste, Name) ->
+get_edge(Liste, Edge) ->
 	[ H | T ] = Liste,
-	{_, _, NodeY} = transform_edge(H),
-	if NodeY == Name ->
-		{ok, H};
+	Eq = equals(Edge, H),
+	if Eq ->
+		H;
 	?Else ->
-		get_edge(T,Name)
+		get_edge(T,Edge)
 	end
 .%
+
+equals(A, A) ->
+	true;
+equals({Weight, NodeX,NodeY}, {Weight,NodeX,NodeY}) ->
+	true;
+equals({Weight, NodeX,NodeY}, {Weight, NodeY,NodeX}) ->
+	true;
+equals(_, _) ->
+	false.
 
 convert_to_edge(Neighbour) ->
 	{Gewicht,Name} = Neighbour,
