@@ -4,8 +4,8 @@
 % Globale "Variablen"
 -define(Config,  '../config/system.cfg').
 -define(Else, true).
-
--record( node, { name, state=sleeping, level=0, find_count=0, basic_edges=[], branch_edges=[], rejected_edges=[], in_branch=nil, test_edge=nil, frag_name=0, best_edge=nil, best_weight=infinity }).
+-define(Infinity,999).
+-record( node, { name, state=sleeping, level=0, find_count=0, basic_edges=[], branch_edges=[], rejected_edges=[], in_branch=nil, test_edge=nil, frag_name=0, best_edge=nil, best_weight=0}).
 
 start_system() ->
 	pman:start(),
@@ -67,6 +67,9 @@ loop(Info) ->
 			loop(Info_new);			
 		alldone ->
 			alldone();
+		status ->
+			log(werkzeug:to_String(Info)),
+			loop(Info);
 		A ->
 			log("### Help, I was killed by message " ++ s(A) ++ " ###")
 	end	
@@ -117,10 +120,10 @@ connect(Level,Edge,Info) ->
 % (4)
 initiate(Level, FragName, NodeState, Edge, Info) ->
 	log("Initiate Empfangen" ++ from(Edge)),
-	Info_new = Info#node{level=Level, frag_name=FragName, state=NodeState, in_branch=Edge, best_edge=nil, best_weight=infinity},
+	Info_new = Info#node{level=Level, frag_name=FragName, state=NodeState, in_branch=Edge, best_edge=nil, best_weight=?Infinity},
 	log("Level gesetzt " ++ s(Level)),
 	Find_count = send_initiate(Info_new#node.branch_edges, Level, FragName, NodeState, Edge, Info_new#node.find_count),
-	Info_new2 = Info_new#node{find_count=Find_count},
+	Info_new2 = Info_new#node{find_count=Find_count+1},
 	if NodeState == find ->
 		procedure_test(Info_new2);
 	?Else ->
@@ -243,7 +246,7 @@ report(Weight, Edge, Info) ->
 			if Weight > Info#node.best_weight ->
 				procedure_changeroot(Info);
 			?Else ->
-				if (Weight == Info#node.best_weight) and (Weight == infinity) ->
+				if ((Weight == ?Infinity) and ((Info#node.best_weight == nil) or Info#node.best_weight == ?Infinity)) ->
 					log("### " ++ s(Info) ++ " ###"),
 					timer:sleep(2000),
 					exit(normal);
