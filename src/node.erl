@@ -332,7 +332,6 @@ changeroot(Edge, Info) ->
 finished(Info) ->
 	log_result("### Finished: " ++ s(Info#node.branch_edges)),
 	lists:foreach(fun(E) -> send_over_edge(E, finished) end, get_edges()),
-	timer:sleep(1000),
 	exit(normal)
 .%
 
@@ -354,9 +353,9 @@ requeue(Message) ->
 
 send_over_edge(Edge, Message) ->
 	S = sender(Edge),
-	S ! Message,
+	catch (S ! Message),
 	log(s(Message) ++ " an " ++ s(S) ++ " gesendet"),
-	timer:sleep(10)
+	timer:sleep(100)
 .%
 
 sender(Edge) ->
