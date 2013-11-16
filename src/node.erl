@@ -1,8 +1,8 @@
 -module(node).
--export([start_system/0]).
+-export([start_system/0, test/0]).
 
 % Globale "Variablen"
--define(Config,  '../config/system.cfg').
+-define(Config, '../config/system.cfg').
 -define(Else, true).
 
 -record( node, { name, state=sleeping, level=0, find_count=0, basic_edges=[], branch_edges=[], rejected_edges=[], in_branch=nil, test_edge=nil, frag_name=0, best_edge=nil, best_weight=infinity }).
@@ -44,7 +44,7 @@ loop(Info) ->
 		wakeup ->
 			Info_new = wakeup(Info),
 			loop(Info_new);
-	    {initiate,Level,FragName,NodeState,Edge} ->
+	  {initiate,Level,FragName,NodeState,Edge} ->
 			Info_new = initiate(Level,FragName,NodeState,Edge, Info),
 			loop(Info_new);
 		{test,Level,Fragname,Edge} ->
@@ -93,7 +93,7 @@ procedure_wakeup(Info) ->
 	Info_new2 = Info_new#node{
 						level=0,		% LN <- 0
 						state=found,	% SN <- Found;
-						find_count=0},  % Find-count <- 0
+						find_count=0}, % Find-count <- 0
 	send_over_edge(Edge, {connect, 0, Edge}),	% send Connect(0) on edge m
 	Info_new2
 .%
@@ -388,5 +388,79 @@ nodecount() ->
 	Nodecount
 .%
 
+%%% TEST
 
+test() ->
+	Name = test,
+	register(Name, self()),
+	global:register_name(Name, self()),
+	test_move(),
+	test_move_to_branch(),
+	test_move_to_rejected(),
+	test_weight(),
+	test_sender(),
+	test_send_over_edge(),
+	io:format("Alle Tests ok~n"),
+	halt()
+.%
 
+test_move() ->
+	Edge = {1, test, neighbour},
+	From = [Edge],
+	To = [],
+	% From <--> To
+	{To, From} = move(From, To, Edge)
+.%
+
+test_move_to_branch() ->
+	Edge = {1, test, neighbour},
+	E = [Edge],
+	Info = #node{basic_edges=E},
+	true = (Info#node{basic_edges=[], branch_edges=E} == move_to_branch(Info, Edge))
+.%
+
+test_move_to_rejected() ->
+	Edge = {1, test, neighbour},
+	E = [Edge],
+	Info = #node{basic_edges=E},
+	true = (Info#node{basic_edges=[], rejected_edges=E} == move_to_rejected(Info, Edge))
+.%
+
+test_weight() ->
+	Edge = {123, a, b},
+	123 = weight(Edge)
+.%
+
+test_sender() ->
+	Edge1 = {123, test, a},
+	Edge2 = {123, a, test},
+	
+	a = sender(Edge1),
+	a = sender(Edge2)
+.%
+
+test_process(Name) ->
+	register(Name, self()),
+	global:register_name(Name, self()),
+	log("test_process now in receive state"),
+	receive
+		{test, Sender} -> Sender ! {test, Sender}
+	after
+		1000 -> true
+	end,
+	exit(normal)
+.%
+
+test_send_over_edge() ->
+	%Edge = {123, test, dest},
+	%Message = {test, self()},
+	spawn(fun() -> test_process(dest) end),
+	%log(sender(Edge)),
+	
+	%sender(Edge) ! Message,
+	%send_over_edge(Edge, Message),
+	%receive
+	%	Msg -> Msg == Message
+	%end
+	timer:sleep(1000)
+.%
