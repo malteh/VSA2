@@ -5,7 +5,19 @@
 -define(Config, '../config/system.cfg').
 -define(Else, true).
 
--record( node, { name, state=sleeping, level=0, find_count=0, basic_edges=[], branch_edges=[], rejected_edges=[], in_branch=nil, test_edge=nil, frag_name=0, best_edge=nil, best_weight=infinity }).
+-record( node, {
+	name,
+	state=sleeping,
+	level=0,
+	find_count=0,
+	basic_edges=[],
+	branch_edges=[],
+	rejected_edges=[],
+	in_branch=nil,
+	test_edge=nil,
+	frag_name=0,
+	best_edge=nil,
+	best_weight=infinity}).
 
 start_system() ->
 	pman:start(),
@@ -68,8 +80,8 @@ loop(Info) ->
 		status ->
 			log(werkzeug:to_String(Info)),
 			loop(Info);
-		alldone ->
-			alldone();
+		finished ->
+			finished(Info);
 		A ->
 			log("### Help, I was killed by message " ++ s(A) ++ " ###")
 	end	
@@ -175,7 +187,6 @@ send_initiate([Edge_i|T], Level, FragName, NodeState, Edge_j, Find_count) ->	% e
 procedure_test(Info) ->
 	if Info#node.basic_edges /= [] ->	% if there are adjacent edges in the state Basic then
 		[Test_edge | _] = Info#node.basic_edges,	% test-edge <- the minimum-weight adjacent edge in state Basic
-		log("Test_edge: " ++ s(Test_edge)),
 		LN = Info#node.level,
 		FN = Info#node.frag_name,
 		send_over_edge(Test_edge , {test, LN, FN, Test_edge}),	% send Test(LN, FN) on test-edge
@@ -288,9 +299,7 @@ report(Weight, Edge, Info) ->
 				procedure_changeroot(Info);			% execute procedure change-root
 			?Else ->
 				if (Weight == Info#node.best_weight) and (Weight == infinity) ->	% if w = best-wt = infinity then
-					log("### " ++ s(Info) ++ " ###"),
-					timer:sleep(2000),
-					exit(normal);													% halt
+					finished(Info);													% halt					
 				?Else ->
 					Info
 				end
@@ -320,9 +329,13 @@ changeroot(Edge, Info) ->
 	procedure_changeroot(Info)	% execute procedure change-root
 .%
 
-alldone() ->
-	log("AllDone")
+finished(Info) ->
+	log("### Finished: " ++ s(Info#node.branch_edges)),
+	lists:foreach(fun(E) -> send_over_edge(E, finished) end, get_edges()),
+	exit(normal)
 .%
+
+%%% helper
 
 from(Edge) ->
 	" Sender: " ++ s(sender(Edge))
@@ -333,7 +346,7 @@ s(V) ->
 .%
 
 requeue(Message) ->
-	timer:sleep(5000),
+	timer:sleep(200),
 	self() ! Message,
 	log(s(Message) ++ " wurde zurueckgestellt")
 .%
@@ -342,7 +355,7 @@ send_over_edge(Edge, Message) ->
 	S = sender(Edge),
 	S ! Message,
 	log(s(Message) ++ " an " ++ s(S) ++ " gesendet"),
-	timer:sleep(1000)
+	timer:sleep(10)
 .%
 
 sender(Edge) ->
