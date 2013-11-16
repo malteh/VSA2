@@ -330,7 +330,7 @@ changeroot(Edge, Info) ->
 .%
 
 finished(Info) ->
-	log("### Finished: " ++ s(Info#node.branch_edges)),
+	log_result("### Finished: " ++ s(Info#node.branch_edges)),
 	lists:foreach(fun(E) -> send_over_edge(E, finished) end, get_edges()),
 	exit(normal)
 .%
@@ -394,6 +394,12 @@ log(Text) ->
 	{ok, Hostname} = inet:gethostname(),
 	Var = io_lib:format("~s: ~s~n", [node_tools:name_string() ++ "@" ++ Hostname, s(Text)]),
 	werkzeug:logging("../logs/nodes.log",Var)
+.%
+
+log_result(Text) ->
+	{ok, Hostname} = inet:gethostname(),
+	Var = io_lib:format("~s: ~s~n", [node_tools:name_string() ++ "@" ++ Hostname, s(Text)]),
+	werkzeug:logging("../logs/result.log",Var)
 .%
 
 nodecount() ->
