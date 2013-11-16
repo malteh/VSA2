@@ -332,6 +332,7 @@ changeroot(Edge, Info) ->
 finished(Info) ->
 	log_result("### Finished: " ++ s(Info#node.branch_edges)),
 	lists:foreach(fun(E) -> send_over_edge(E, finished) end, get_edges()),
+	timer:sleep(1000),
 	exit(normal)
 .%
 
