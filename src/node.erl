@@ -77,7 +77,7 @@ loop(Info) ->
 
 % (1) Response to spontaneous awakening	
 wakeup(Info) ->
-	log("wakeup Empfangen" ++ from(Edge)),
+	log("wakeup Empfangen"),
 	
 	if Info#node.state == sleeping ->	% can occur only at a node in the sleeping state
 		procedure_wakeup(Info);			% execute procedure wakeup
