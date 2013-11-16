@@ -64,7 +64,10 @@ loop(Info) ->
 			loop(Info_new);			
 		{connect,Level,Edge} ->
 			Info_new = connect(Level, Edge, Info),
-			loop(Info_new);			
+			loop(Info_new);	
+		status ->
+			log(werkzeug:to_String(Info)),
+			loop(Info);			
 		alldone ->
 			alldone();
 		A ->
