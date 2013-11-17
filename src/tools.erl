@@ -6,7 +6,7 @@ now_milliseconds() ->
 	K = 1000,
 	{Megasecs, Secs, Microsecs} = erlang:now(),
 	MS = (Megasecs * K * K * K) + (Secs * K) + (Microsecs / K),
-	MS
+	round(MS)
 .%
 
 now_seconds() ->
@@ -25,7 +25,7 @@ contains([_|Tail],Elem ) -> contains(Tail, Elem)
 
 time_string() ->
 	{_, {Hour,Min,Seconds}} = erlang:localtime(),
-	integer_to_list(Hour) ++ ":" ++ integer_to_list(Min) ++ ":" ++ integer_to_list(Seconds)
+	io_lib:format("~2..0B:~2..0B:~2..0B", [Hour, Min, Seconds])
 .%
 
 date_string() ->

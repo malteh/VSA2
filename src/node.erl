@@ -135,8 +135,8 @@ connect(Level,Edge,Info) ->							% Edge = j
 			Info_new2
 		end;
 	?Else ->
-		IsBasic = node_tools:equals(node_tools:get_edge(Info_new#node.basic_edges, Edge) , Edge),
-		if (IsBasic) ->	% if SE(j) = Basic then
+		Is_basic = node_tools:equals(node_tools:get_edge(Info_new#node.basic_edges, Edge), Edge),
+		if (Is_basic) ->					% if SE(j) = Basic then
 			requeue({connect,Level,Edge});	% place received message on end of queue
 		?Else ->
 			W = weight(Edge),	% w(j)
@@ -159,7 +159,7 @@ initiate(Level, FragName, NodeState, Edge, Info) ->
 			best_edge=nil,			% best-edge <- nil
 			best_weight=infinity},	% best-wt <- infinity
 	
-	Find_count = send_initiate(Info_new#node.branch_edges, Level, FragName, NodeState, Edge, Info_new#node.find_count),	% for all i != j such that SE(i) = Branch
+	Find_count = send_initiate(Info_new#node.branch_edges, Level, FragName, NodeState, node_tools:transform_edge(Edge), Info_new#node.find_count),	% for all i != j such that SE(i) = Branch
 	Info_new2 = Info_new#node{find_count=Find_count},	% set new find-count
 	
 	if NodeState == find ->			% if S = Find then
@@ -189,7 +189,7 @@ procedure_test(Info) ->
 		[Test_edge | _] = Info#node.basic_edges,	% test-edge <- the minimum-weight adjacent edge in state Basic
 		LN = Info#node.level,
 		FN = Info#node.frag_name,
-		send_over_edge(Test_edge , {test, LN, FN, Test_edge}),	% send Test(LN, FN) on test-edge
+		send_over_edge(Test_edge, {test, LN, FN, Test_edge}),	% send Test(LN, FN) on test-edge
 		Info#node{test_edge=Test_edge};				% test-edge <- the minimum-weight adjacent edge in state Basic
 	?Else ->
 		procedure_report(Info#node{test_edge=nil})	% test-edge <- nil; execute procedure report end
@@ -346,7 +346,7 @@ s(V) ->
 .%
 
 requeue(Message) ->
-	timer:sleep(200),
+	timer:sleep(500),
 	self() ! Message,
 	log(s(Message) ++ " wurde zurueckgestellt")
 .%
@@ -375,13 +375,13 @@ move(From, To, Edge) ->
 
 move_to_branch(Info, Edge) ->
 	log("Move To Branch: " ++ s(Edge)),
-	{From, To} = move(Info#node.basic_edges, Info#node.branch_edges ,Edge),
+	{From, To} = move(Info#node.basic_edges, Info#node.branch_edges,Edge),
 	Info#node{basic_edges=From, branch_edges=To}
 .%
 
 move_to_rejected(Info, Edge) ->
 	log("Move To Rejected: " ++ s(Edge)),
-	{From, To} = move(Info#node.basic_edges, Info#node.rejected_edges ,Edge),
+	{From, To} = move(Info#node.basic_edges, Info#node.rejected_edges,Edge),
 	Info#node{basic_edges=From, rejected_edges=To}
 .%
 
@@ -392,7 +392,7 @@ get_edges() ->
 
 log(Text) ->
 	{ok, Hostname} = inet:gethostname(),
-	Var = io_lib:format("~s: ~s~n", [node_tools:name_string() ++ "@" ++ Hostname, s(Text)]),
+	Var = io_lib:format("~w;~s;~s~n", [tools:now_milliseconds(), node_tools:name_string() ++ "@" ++ Hostname, s(Text)]),
 	werkzeug:logging("../logs/nodes.log",Var)
 .%
 
