@@ -37,18 +37,19 @@ equals({Weight, NodeX, NodeY}, {Weight, NodeY, NodeX}) ->
 equals(_, _) ->
 	false.
 
-convert_to_edge(Neighbour) ->
-	{Gewicht, Name} = Neighbour, 
-	{Gewicht, name(), Name}
+convert_to_edge(Neighbour, Name) ->
+	{Gewicht, Name2} = Neighbour, 
+	{Gewicht, Name, Name2}
 .%
-convert_to_edges(Neighbours) ->
-	convert_to_edges(Neighbours, [])
+
+convert_to_edges(Neighbours, Name) ->
+	convert_to_edges(Neighbours, [], Name)
 .%
-convert_to_edges([], ErgebnisListe) ->
+convert_to_edges([], ErgebnisListe, _) ->
 	ErgebnisListe;
-convert_to_edges(Neighbours, ErgebnisListe) ->
+convert_to_edges(Neighbours, ErgebnisListe, Name) ->
 	[Head | Tail] = Neighbours, 
-	convert_to_edges(Tail, ErgebnisListe ++ [convert_to_edge(Head)])
+	convert_to_edges(Tail, ErgebnisListe ++ [convert_to_edge(Head, Name)], Name)
 .%
 
 transform_edge(Edge) ->

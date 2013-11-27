@@ -27,8 +27,8 @@ start_system() ->
 start_system(0) ->
 	{ok, Hosts} = file:consult("../config/hosts.cfg"),
 	net_adm:world_list(Hosts),
-	timer:sleep(1000),
-	n0 ! wakeup,
+%	timer:sleep(1000),
+%	n0 ! wakeup,
 	true;
 start_system(Count) ->
 	Name = list_to_atom("n" ++ integer_to_list(Count-1)),
@@ -42,12 +42,18 @@ start(Name) ->
 .%
 
 init(Name) ->
+	try
+		get_edges(Name)
+	catch
+		throw:_ -> exit(normal);
+		exit:_ -> exit(normal);
+		error:_ -> exit(normal)
+	end,
+	E = get_edges(Name),
 	register(Name, self()),
 	global:register_name(Name, self()),
 	{ok, Hosts} = file:consult("../config/hosts.cfg"),
 	net_adm:world_list(Hosts),
-	E = get_edges(),
-	%log(werkzeug:to_String(E)),
 	#node{name=Name, basic_edges=E}
 .%
 
@@ -331,7 +337,7 @@ changeroot(Edge, Info) ->
 
 finished(Info) ->
 	log_result("### Finished: " ++ s(Info#node.branch_edges)),
-	lists:foreach(fun(E) -> send_over_edge(E, finished) end, get_edges()),
+	lists:foreach(fun(E) -> send_over_edge(E, finished) end, get_edges(Info#node.name)),
 	exit(normal)
 .%
 
@@ -385,10 +391,15 @@ move_to_rejected(Info, Edge) ->
 	Info#node{basic_edges=From, rejected_edges=To}
 .%
 
-get_edges() ->
-	{ok, Neighbours} = file:consult("../config/" ++ integer_to_list(nodecount()) ++ "/" ++ node_tools:name_string() ++ ".cfg"),
-	node_tools:sort_edges(node_tools:convert_to_edges(Neighbours))
+get_edges(Name) ->
+	{ok, Neighbours} = file:consult("../config/" ++ integer_to_list(nodecount()) ++ "/" ++ s(Name) ++ ".cfg"),
+	node_tools:sort_edges(node_tools:convert_to_edges(Neighbours, Name))
 .%
+
+%get_edges() ->
+%	{ok, Neighbours} = file:consult("../config/" ++ integer_to_list(nodecount()) ++ "/" ++ node_tools:name_string() ++ ".cfg"),
+%	node_tools:sort_edges(node_tools:convert_to_edges(Neighbours))
+%.%
 
 log(Text) ->
 	{ok, Hostname} = inet:gethostname(),
