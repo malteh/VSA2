@@ -20,15 +20,15 @@
 	best_weight=infinity}).
 
 start_system() ->
-	pman:start(),
+	%pman:start(),
 	start_system(nodecount())
 .%
 
 start_system(0) ->
 	{ok, Hosts} = file:consult("../config/hosts.cfg"),
 	net_adm:world_list(Hosts),
-%	timer:sleep(1000),
-%	n0 ! wakeup,
+	%timer:sleep(1000),
+	%n0 ! wakeup,
 	true;
 start_system(Count) ->
 	Name = list_to_atom("n" ++ integer_to_list(Count-1)),
