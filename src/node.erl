@@ -359,7 +359,7 @@ requeue(Message) ->
 
 send_over_edge(Edge, Message) ->
 	S = sender(Edge),
-	catch (S ! Message),
+	catch (global:whereis_name(S) ! Message),
 	log(s(Message) ++ " an " ++ s(S) ++ " gesendet"),
 	timer:sleep(100)
 .%
